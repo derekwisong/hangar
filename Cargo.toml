@@ -1,0 +1,12 @@
+[package]
+name = "hangar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+criterion = "0.5.1"
+polars = { version = "0.41.3", features = ["lazy", "csv"] }
+
+[[bench]]
+name = "data"
+harness = false
