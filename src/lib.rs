@@ -1,22 +1,20 @@
+use std::io::BufRead;
 use polars::prelude::*;
-use polars::df;
-// use std::io::BufRead;
 
-
-// fn num_lines(path: &std::path::Path) -> Result<usize, std::io::Error> {
-//     let file = std::fs::File::open(path)?;
-//     let reader = std::io::BufReader::new(file);
-//     Ok(reader.lines().count())
-// }
-
-pub fn get_schema(path: &std::path::Path) -> PolarsResult<Schema> {
-    let df = CsvReadOptions::default()
-        .with_has_header(true)
-        .with_skip_rows(2)
-        .with_n_rows(Some(1))
-        .try_into_reader_with_file_path(Some(path.into()))?
-        .finish()?;
+pub fn read_csv_columns(path: &std::path::Path) -> Result<Vec<String>, std::io::Error> {
+    let mut columns = Vec::new();
+    let file = std::fs::File::open(path)?;
     
+    for line in std::io::BufReader::new(file).lines() {
+        let line = line?;
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        columns = line.split(',').map(|s| s.to_string()).collect();
+        break;
+    }
+
+    Ok(columns)
 }
 
 pub fn strip_column_names(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
