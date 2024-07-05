@@ -1,11 +1,16 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 
-pub fn hello(c: &mut Criterion) {
-    const PATH: &str = "/mnt/d/Flying/Flight Logs/log_231104_084813_KPOU.csv";
-    c.bench_function("read_csv", |b| b.iter(|| 
-        hangar::read_csv(&std::path::Path::new(PATH)).unwrap()
-    ));
+const SAMPLE_CSV: &str = "/mnt/d/Flying/Flight Logs/log_231104_084813_KPOU.csv";
+
+pub fn read_csv_eager(c: &mut Criterion) {
+    let p = std::path::Path::new(SAMPLE_CSV);
+    c.bench_function("read_csv", |b| b.iter(|| hangar::read_csv(&p).unwrap()));
 }
 
-criterion_group!(benches, hello);
+pub fn read_csv_lazy(c: &mut Criterion) {
+    let p = std::path::Path::new(SAMPLE_CSV);
+    c.bench_function("read_csv_lazy", |b| b.iter(|| hangar::read_lazy(&p).unwrap()));
+}
+
+criterion_group!(benches, read_csv_eager, read_csv_lazy);
 criterion_main!(benches);
