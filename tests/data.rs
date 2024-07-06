@@ -1,5 +1,27 @@
 const SAMPLE_CSV: &str = "/mnt/d/Flying/Flight Logs/log_231104_084813_KPOU.csv";
 
+#[test]
+fn test_read_csv_metadata() {
+    let path = std::path::Path::new(SAMPLE_CSV);
+    let header = hangar::EISHeader::from_csv(&path).unwrap();
+    assert_eq!(header.metadata["log_version"], "1.03");
+    assert_eq!(header.metadata["airframe_name"], "Mooney M20J");
+    assert_eq!(header.metadata["tail_number"], "N355RL");
+}
+
+#[test]
+fn test_read_csv_metadata2() {
+    let path = std::path::Path::new(SAMPLE_CSV);
+    let header = hangar::EISHeader::from_csv2(&path).unwrap();
+    assert_eq!(header.metadata["log_version"], "1.03");
+    assert_eq!(header.metadata["airframe_name"], "Mooney M20J");
+    assert_eq!(header.metadata["tail_number"], "N355RL");
+    let col = header.columns.get(0).unwrap();
+    assert_eq!(col.raw_name(), "  Lcl Date");
+    assert_eq!(col.name(), "Lcl Date");
+    assert_eq!(col.unit(), "yyy-mm-dd");
+}
+
 // test reading csv columns
 #[test]
 fn test_read_csv_columns() {
