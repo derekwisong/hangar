@@ -1,0 +1,8 @@
+// {
+//     "rust-analyzer.cargo.extraArgs": [
+//         "--offline"
+//     ],
+//     "rust-analyzer.runnables.extraArgs": [
+//         "--offline"
+//     ]
+// }
