@@ -33,8 +33,8 @@ impl EISHeader {
         let mut metadata = HashMap::new();
         let mut columns = Vec::new();
 
-        // all data can be found in the first 3 rows of the file.
-        // row 1 starts with a comment char and has metadata entries in the form of key="value" separated by commas and value quoted
+        // all header data can be found in the first 3 rows of the file.
+        // row 1 starts with a comment char and has metadata entries in the form of key="value" separated by commas
         // row 2 starts with a comment char and has column units separated by commas
         // row 3 lists the column names separated by commas
 
@@ -83,7 +83,27 @@ pub fn strip_column_names(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
     Ok(df)
 }
 
-pub fn read_csv(path: &std::path::Path) -> PolarsResult<DataFrame> {
+pub fn remove_empty_rows(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
+    // drop rows where all values in that row are null
+    let mask = df
+        .get_columns()
+        .iter()
+        .fold(None, |acc, s| match acc {
+            None => Some(s.is_not_null()),
+            Some(mask) => Some(mask & s.is_not_null()),
+        })
+        .unwrap();
+    df = df.filter(&mask)?;
+    Ok(df)
+}
+
+pub fn clean_eis(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
+    df = strip_column_names(df)?;
+    df = remove_empty_rows(df)?;
+    Ok(df)
+}
+
+pub fn read_eis(path: &std::path::Path) -> PolarsResult<DataFrame> {
     const SKIP_ROWS: usize = 2;
     // let lines = num_lines(path)?;
     let mut df = CsvReadOptions::default()
@@ -93,6 +113,6 @@ pub fn read_csv(path: &std::path::Path) -> PolarsResult<DataFrame> {
         .try_into_reader_with_file_path(Some(path.into()))?
         .finish()?;
 
-    df = strip_column_names(df)?;
+    df = clean_eis(df)?;
     Ok(df)
 }
