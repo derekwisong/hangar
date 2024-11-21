@@ -1,6 +1,14 @@
 use polars::prelude::*;
 use std::{collections::HashMap, io::BufRead};
 
+#[doc(hidden)]
+pub fn resource_path(filename: &str) -> std::path::PathBuf {
+    let mut d = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    d.push("resources");
+    d.push(filename);
+    d
+}
+
 #[derive(Debug)]
 pub struct EISColumn {
     name: String,
@@ -25,6 +33,11 @@ impl EISColumn {
 pub struct EISHeader {
     pub metadata: HashMap<String, String>,
     pub columns: Vec<EISColumn>,
+}
+
+pub struct EISData {
+    pub header: EISHeader,
+    pub data: DataFrame,
 }
 
 impl EISHeader {
@@ -67,6 +80,15 @@ impl EISHeader {
     }
 }
 
+impl EISData {
+    pub fn from_csv(path: &std::path::Path) -> PolarsResult<Self> {
+        let header = EISHeader::from_csv(path)?;
+        let data = read_eis(path)?;
+        let data = clean_eis(data)?;
+        Ok(Self { header, data })
+    }
+}
+
 // Clean up a raw column name by trimming whitespace
 pub fn clean_column_name(name: &str) -> &str {
     name.trim()
@@ -83,8 +105,8 @@ pub fn strip_column_names(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
     Ok(df)
 }
 
+/// drop rows where all values in that row are null
 pub fn remove_empty_rows(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
-    // drop rows where all values in that row are null
     let mask = df
         .get_columns()
         .iter()
@@ -106,13 +128,12 @@ pub fn clean_eis(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
 pub fn read_eis(path: &std::path::Path) -> PolarsResult<DataFrame> {
     const SKIP_ROWS: usize = 2;
     // let lines = num_lines(path)?;
-    let mut df = CsvReadOptions::default()
+    let df = CsvReadOptions::default()
         .with_skip_rows(SKIP_ROWS) // skip the first 2 rows
-        // .with_n_rows(Some(lines - SKIP_ROWS - 2)) // don't read the last row (it's all null bytes)
         .with_has_header(true)
         .try_into_reader_with_file_path(Some(path.into()))?
         .finish()?;
-
-    df = clean_eis(df)?;
+    let df = clean_eis(df)?;
     Ok(df)
 }
+
