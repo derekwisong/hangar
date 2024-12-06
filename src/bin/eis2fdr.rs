@@ -1,6 +1,6 @@
 // Build X-Plane flight data recorder (FDR) file from a Garmin EIS data file.
-
 use std::io::Write;
+use hangar::garmin;
 
 // A .fdr file is a text files that contains lines of data in a csv-like format with a few header lines:
 // - The first describes the line-ending types "A" (Apple) or "I" (IBM) and then the appropriate line ending.
@@ -285,7 +285,8 @@ impl FDRField for EventField {
 fn main() {
     // get path from command line
     let path = std::env::args().nth(1).expect("No file path provided");
-    let data = hangar::EISData::from_csv(&std::path::Path::new(path.as_str())).unwrap();
+    let output = std::env::args().nth(2).unwrap_or("output.fdr".to_string());
+    let data = garmin::EISData::from_csv(&std::path::Path::new(path.as_str())).unwrap();
     println!("{:?}", data.data);
 
     // NOTE: handle utc offset, this should be zulu formatted hh:mm:ss
@@ -322,7 +323,7 @@ fn main() {
         ]
     };
 
-    let output_path = std::path::Path::new("output.fdr");
+    let output_path = std::path::Path::new(&output);
     println!("Writing FDR file to {}", output_path.to_str().unwrap());
     fdr.write_fdr(output_path).unwrap();
 }
