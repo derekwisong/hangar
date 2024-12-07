@@ -1,7 +1,7 @@
+use crate::data::{clean_column_name, clean_dataframe};
+use polars::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
-use polars::prelude::*;
-use crate::data::{clean_column_name, clean_dataframe};
 
 #[derive(Debug)]
 pub struct EISColumn {
@@ -153,11 +153,50 @@ impl EISData {
         let schema = header.build_schema();
         let data = Self::read_df(path, &schema)?;
         let data = clean_dataframe(data)?;
-        // let data = create_zulu_datetime(data,"Lcl Date", "Lcl Time", "UTCOfst")?;
+        let data = create_zulu_datetime(data, "Lcl Date", "Lcl Time", "UTCOfst")?;
         Ok(Self { header, data })
     }
 }
 
-// fn create_zulu_datetime(mut df: DataFrame, date_col: &str, time_col: &str, offset_col: &str) -> PolarsResult<DataFrame> {
-//     Ok(df)
-// }
+fn calculate_zulu_datetime(_date: &str, _time: &str, _offset: &str) -> String {
+    return format!("{}T{}{}", _date, _time, _offset);
+}
+
+fn create_zulu_datetime(
+    mut df: DataFrame,
+    date_col: &str,
+    time_col: &str,
+    offset_col: &str,
+) -> PolarsResult<DataFrame> {
+    df = df
+        .lazy()
+        .with_column(
+            as_struct(vec![col(date_col), col(time_col), col(offset_col)])
+                .map(
+                    |s| {
+                        let fields = s.struct_()?.fields();
+                        let date = fields[0].date()?;
+                        let time = fields[1].str()?;
+                        let offset = fields[2].str()?;
+
+                        let out: StringChunked = date.strftime("%Y-%m-%d")
+                            .into_iter()
+                            .zip(time.into_iter())
+                            .zip(offset.into_iter())
+                            .map(|((date, time), offset)| match (date, time, offset) {
+                                (Some(date), Some(time), Some(offset)) => {
+                                    Some(calculate_zulu_datetime(date, time, offset))
+                                }
+                                _ => None,
+                            })
+                            .collect();
+
+                        Ok(Some(out.into_series()))
+                    },
+                    GetOutput::from_type(DataType::String),
+                )
+                .alias("Zulu"),
+        )
+        .collect()?;
+    Ok(df)
+}
