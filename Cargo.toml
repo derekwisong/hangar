@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 chrono = "0.4.38"
 criterion = "0.5.1"
-polars = { version = "0.41.3", features = ["lazy", "csv", "dtype-struct"] }
+polars = { version = "0.41.3", features = ["lazy", "csv", "dtype-struct", "dtype-date", "strings", "concat_str", "timezones"] }
 
 [[bench]]
 name = "data"
