@@ -38,14 +38,13 @@ fn clean_strings(mut df: DataFrame) -> PolarsResult<DataFrame> {
         .filter(|s| s.dtype() == &DataType::String)
         .map(|s| s.name().to_string())
         .collect::<Vec<String>>();
-    use polars::prelude::*;
 
     // trim whitespace from string columns
     for col in string_columns {
         df.replace(
             &col,
             Series::new(
-                &col,
+                col.clone().into(),  // this was once fine using &col, but update of polars broke it
                 df.column(&col)?
                     .str()?
                     .into_iter()
@@ -58,9 +57,9 @@ fn clean_strings(mut df: DataFrame) -> PolarsResult<DataFrame> {
     Ok(df)
 }
 
-pub fn clean_dataframe(mut df: DataFrame) -> Result<DataFrame, PolarsError> {
-    df = strip_column_names(df)?;
-    df = clean_strings(df)?;
-    df = remove_empty_rows(df)?;
-    Ok(df)
+pub fn clean_dataframe(mut lazy: DataFrame) -> Result<DataFrame, PolarsError> {
+    lazy = strip_column_names(lazy)?;
+    lazy = clean_strings(lazy)?;
+    lazy = remove_empty_rows(lazy)?;
+    Ok(lazy)
 }

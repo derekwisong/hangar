@@ -1,4 +1,5 @@
 use crate::data::{clean_column_name, clean_dataframe};
+use chrono::Utc;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
@@ -116,7 +117,7 @@ impl EISHeader {
                         "crc16" => DataType::String,
                         _ => DataType::String,
                     };
-                    Field::new(c.name(), dtype)
+                    Field::new(c.name().into(), dtype)
                 })
                 .collect::<Vec<_>>(),
         )
@@ -135,7 +136,7 @@ impl EISData {
         Ok(std::io::Cursor::new(buffer))
     }
 
-    fn read_df(path: &std::path::Path, schema: &Schema) -> PolarsResult<DataFrame> {
+    fn read_df(path: &std::path::Path, schema: &Schema) -> PolarsResult<LazyFrame> {
         // read the file bytes into a buffer
         const SKIP_ROWS: usize = 2;
         // read into dataframe
@@ -144,8 +145,7 @@ impl EISData {
             .with_schema(Some(Arc::new(schema.clone())))
             .with_skip_rows(SKIP_ROWS)
             .into_reader_with_file_handle(Self::read_bytes(path)?);
-        let df = reader.finish()?;
-        Ok(df)
+        Ok(reader.finish()?.lazy())
     }
 
     pub fn from_csv(path: &std::path::Path) -> PolarsResult<Self> {
@@ -153,21 +153,29 @@ impl EISData {
         let schema = header.build_schema();
         let data = Self::read_df(path, &schema)?;
         let data = parse_datetime(data, "Lcl Date", "Lcl Time", "UTCOfst", "Timestamp", true)?;
+        let data = data.collect()?;
         let data = clean_dataframe(data)?;
         Ok(Self { header, data })
+    }
+
+    pub fn first_time(&self) -> Option<chrono::DateTime<Utc>> {
+        match self.data.column("Timestamp") {
+            Ok(Column::Series(s)) => Some(s.datetime().unwrap().as_datetime_iter().next().unwrap().unwrap().and_utc()),
+            _ => None,
+        }
+        
     }
 }
 
 fn parse_datetime(
-    df: DataFrame,
+    lazy: LazyFrame,
     date_col: &str,
     time_col: &str,
     offset_col: &str,
     new_timestamp_col: &str,
     drop_source_cols: bool,
-) -> PolarsResult<DataFrame> {
-    let mut lazy = df
-        .lazy()
+) -> PolarsResult<LazyFrame> {
+    let mut lazy = lazy
         .with_column(
             concat_str(
                 vec![
@@ -193,8 +201,8 @@ fn parse_datetime(
         );
     
     if drop_source_cols {
-        lazy = lazy.drop(&[date_col, time_col, offset_col]);
+        lazy = lazy.drop(vec![date_col, time_col, offset_col]);
     }
    
-    Ok(lazy.collect()?)
+    Ok(lazy)
 }

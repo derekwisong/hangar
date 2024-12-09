@@ -1,6 +1,6 @@
 // Build X-Plane flight data recorder (FDR) file from a Garmin EIS data file.
-use std::io::Write;
 use hangar::garmin;
+use std::{fs::File, io::{self, Write}};
 
 // A .fdr file is a text files that contains lines of data in a csv-like format with a few header lines:
 // - The first describes the line-ending types "A" (Apple) or "I" (IBM) and then the appropriate line ending.
@@ -25,7 +25,7 @@ use hangar::garmin;
 // DATA: comma-delimited floating-point numbers that make up the bulk of the .fdr data (ex: 5,10 & see explanation table below)
 
 // In version 4 files, omit the DATA fields and instead the raw csv data will be added to the end of the file.
-// In the csv data, the first 7 columns must be: 
+// In the csv data, the first 7 columns must be:
 //      zulu time (hh:mm:ss), longitude, latitude, altitude (feet),
 //      magnetic heading (degrees), pitch (degrees), roll (degrees)
 // The remaining columns may be any data you wish to include. Each additional column you provide must be associated
@@ -58,8 +58,6 @@ use hangar::garmin;
 // DREF, sim/cockpit2/radios/actuators/com1_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 // DREF, sim/cockpit2/radios/actuators/com2_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 
-
-
 pub trait FDRField {
     fn field_name(&self) -> &str;
     fn field_values(&self) -> Vec<String>;
@@ -74,23 +72,42 @@ pub trait FDRWriter {
         }
         line
     }
-    fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()>;
+    // fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()>;
+    fn write_fdr(&self, writer: Writer) -> std::io::Result<()>;
+
+    fn print_fdr(&self);
 }
 
 pub struct FDRFileVersion4 {
     pub fields: Vec<Box<dyn FDRField>>,
 }
 
-
 impl FDRWriter for FDRFileVersion4 {
-    fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()> {
-        let mut file = std::fs::File::create(path)?;
-        writeln!(file, "A")?;
-        writeln!(file, "4")?;
+    // fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()> {
+    //     let mut file = std::fs::File::create(path)?;
+    //     writeln!(file, "A")?;
+    //     writeln!(file, "4")?;
+    //     for field in &self.fields {
+    //         writeln!(file, "{}", self.serialize_field(&**field))?;
+    //     }
+    //     Ok(())
+    // }
+
+    fn write_fdr(&self, mut writer: Writer) -> std::io::Result<()> {
+        writeln!(writer, "A")?;
+        writeln!(writer, "4")?;
         for field in &self.fields {
-            writeln!(file, "{}", self.serialize_field(&**field))?;
+            writeln!(writer, "{}", self.serialize_field(&**field))?;
         }
         Ok(())
+    }
+
+    fn print_fdr(&self) {
+        println!("A");
+        println!("4");
+        for field in &self.fields {
+            println!("{}", self.serialize_field(&**field));
+        }
     }
 }
 
@@ -219,7 +236,11 @@ impl FDRField for CalibrationField {
     }
 
     fn field_values(&self) -> Vec<String> {
-        vec![self.longitude.to_string(), self.latitude.to_string(), self.elevation.to_string()]
+        vec![
+            self.longitude.to_string(),
+            self.latitude.to_string(),
+            self.elevation.to_string(),
+        ]
     }
 }
 
@@ -282,35 +303,49 @@ impl FDRField for EventField {
     }
 }
 
+// create an alias for Box<dyn Write>
+type Writer = Box<dyn Write>;
+
+fn console_writer() -> Writer {
+    Box::new(std::io::stdout())
+}
+
+fn file_writer(path: &std::path::Path) -> io::Result<Writer> {
+    File::create(path).map(|f| Box::new(f) as Writer)
+}
+
 fn main() {
-    // get path from command line
     let path = std::env::args().nth(1).expect("No file path provided");
-    let output = std::env::args().nth(2).unwrap_or("output.fdr".to_string());
+    let output = std::env::args().nth(2);
+
     let data = garmin::EISData::from_csv(&std::path::Path::new(path.as_str())).unwrap();
     println!("{:?}", data.data);
 
-    // NOTE: handle utc offset, this should be zulu formatted hh:mm:ss
-    // let first_time = data.data.column("Lcl Time").unwrap().get(0).unwrap();
-    let first_time = format!["{}", data.data.column("Lcl Time").unwrap().get(0).unwrap()];
-    // NOTE: zulu date, this should be formatted as mm/dd/yyyy
-    let first_date = data.data.column("Lcl Date").unwrap().get(0).unwrap().to_string();
-
+    let first_timestamp = data.first_time().unwrap().to_utc();
+    let first_time = first_timestamp.format("%H:%M:%S").to_string();
+    let first_date = first_timestamp.format("%m/%d/%Y").to_string();
     let tail_number = data.header.metadata["tail_number"].clone();
-    let airframe_name = data.header.metadata["airframe_name"].clone();
-    let unit = data.header.metadata["unit"].clone();
-    let product = data.header.metadata["Product"].clone();
-    let aircraft = "Aircraft/Laminar Research/Boeing B747-400/747-400.acf".to_string();
-    let derek = "Derek".to_string();
-    println!("{} time: {}, date: {}", derek, first_time, first_date);
-
 
     let fdr = FDRFileVersion4 {
         fields: vec![
-            // comment should be "<Tail Number>, <Airframe Name>, <Unit>, <Product>. Converted from Garmin EIS data."
-            Box::new(CommentField { comment: format!("{}, {}, {}, {}. Converted from Garmin EIS data.", tail_number, airframe_name, unit, product) }),
-            Box::new(AircraftField { aircraft: aircraft }),
-            Box::new(TailNumberField { tail_number: tail_number }),
-            Box::new(FlightTimeField { time: first_time.to_string() }),
+            Box::new(CommentField {
+                comment: format!(
+                    "{} - {} ({}, {}). Converted using eis2fdr.",
+                    tail_number,
+                    data.header.metadata["airframe_name"].clone(),
+                    data.header.metadata["unit"].clone(),
+                    data.header.metadata["Product"].clone()
+                ),
+            }),
+            Box::new(AircraftField {
+                aircraft: "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf".to_string(),
+            }),
+            Box::new(TailNumberField {
+                tail_number: tail_number,
+            }),
+            Box::new(FlightTimeField {
+                time: first_time.to_string(),
+            }),
             Box::new(FlightDateField { date: first_date }),
             // Box::new(SeaLevelPressureField { pressure: 29.83 }),
             // Box::new(SeaLevelTemperatureField { temperature: 65.0 }),
@@ -320,10 +355,13 @@ fn main() {
             // Box::new(TextField { time: 5, text: "This is a test of the spoken text.".to_string() }),
             // Box::new(MarkerField { time: 5, text: "Marker at 5 seconds".to_string() }),
             // Box::new(EventField { time: 10.5 }),
-        ]
+        ],
     };
 
-    let output_path = std::path::Path::new(&output);
-    println!("Writing FDR file to {}", output_path.to_str().unwrap());
-    fdr.write_fdr(output_path).unwrap();
+    let writer = match output {
+        Some(output) => file_writer(&std::path::Path::new(output.as_str())).unwrap(),
+        None => console_writer(),
+    };
+
+    fdr.write_fdr(writer).unwrap();
 }
