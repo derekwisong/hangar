@@ -1,6 +1,7 @@
 // Build X-Plane flight data recorder (FDR) file from a Garmin EIS data file.
 use hangar::garmin;
 use std::{fs::File, io::{self, Write}};
+use polars::prelude::*;
 
 // A .fdr file is a text files that contains lines of data in a csv-like format with a few header lines:
 // - The first describes the line-ending types "A" (Apple) or "I" (IBM) and then the appropriate line ending.
@@ -73,7 +74,7 @@ pub trait FDRWriter {
         line
     }
     // fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()>;
-    fn write_fdr(&self, writer: Writer) -> std::io::Result<()>;
+    fn write_fdr(&self, writer: Writer, data: &DataFrame) -> std::io::Result<()>;
 
     fn print_fdr(&self);
 }
@@ -93,12 +94,28 @@ impl FDRWriter for FDRFileVersion4 {
     //     Ok(())
     // }
 
-    fn write_fdr(&self, mut writer: Writer) -> std::io::Result<()> {
+    fn write_fdr(&self, mut writer: Writer, data: &DataFrame) -> std::io::Result<()> {
         writeln!(writer, "A")?;
         writeln!(writer, "4")?;
         for field in &self.fields {
             writeln!(writer, "{}", self.serialize_field(&**field))?;
         }
+        let mut data = data.clone().lazy()
+            .select(vec![
+                col("Timestamp").dt().strftime("%H:%M:%S").alias("time"),
+                col("Longitude"),
+                col("Latitude"),
+                col("AltB"),
+                col("HDG"),
+                col("Pitch"),
+                col("Roll")])
+            .drop_nans(None)
+            .collect().unwrap();
+
+        CsvWriter::new(writer)
+            .include_header(false)
+            .finish(&mut data).unwrap();
+            
         Ok(())
     }
 
@@ -363,5 +380,5 @@ fn main() {
         None => console_writer(),
     };
 
-    fdr.write_fdr(writer).unwrap();
+    fdr.write_fdr(writer, &data.data).unwrap();
 }
