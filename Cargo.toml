@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 chrono = "0.4.38"
+clap = { version = "4.5.23", features = ["derive"] }
 criterion = "0.5.1"
 polars = { version = "0.45.0", features = ["lazy", "csv", "dtype-struct", "dtype-date", "strings", "concat_str", "timezones", "serde"] }
 

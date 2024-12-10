@@ -1,5 +1,7 @@
 pub mod garmin;
 pub mod data;
+pub mod fdr;
+pub mod detect;
 
 #[doc(hidden)]
 pub fn resource_path(filename: &str) -> std::path::PathBuf {

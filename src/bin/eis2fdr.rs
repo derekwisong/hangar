@@ -1,7 +1,7 @@
 // Build X-Plane flight data recorder (FDR) file from a Garmin EIS data file.
 use hangar::garmin;
-use std::{fs::File, io::{self, Write}};
-use polars::prelude::*;
+use hangar::fdr::{CommentField, AircraftField, TailNumberField, FlightTimeField, FlightDateField, Writer, FDRFileVersion4, FDRWriter};
+use std::fs::File;
 
 // A .fdr file is a text files that contains lines of data in a csv-like format with a few header lines:
 // - The first describes the line-ending types "A" (Apple) or "I" (IBM) and then the appropriate line ending.
@@ -59,284 +59,21 @@ use polars::prelude::*;
 // DREF, sim/cockpit2/radios/actuators/com1_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 // DREF, sim/cockpit2/radios/actuators/com2_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 
-pub trait FDRField {
-    fn field_name(&self) -> &str;
-    fn field_values(&self) -> Vec<String>;
-}
 
-pub trait FDRWriter {
-    fn serialize_field(&self, field: &dyn FDRField) -> String {
-        let mut line = field.field_name().to_string();
-        for value in field.field_values() {
-            line.push_str(",");
-            line.push_str(&value);
-        }
-        line
-    }
-    // fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()>;
-    fn write_fdr(&self, writer: Writer, data: &DataFrame) -> std::io::Result<()>;
 
-    fn print_fdr(&self);
-}
-
-pub struct FDRFileVersion4 {
-    pub fields: Vec<Box<dyn FDRField>>,
-}
-
-impl FDRWriter for FDRFileVersion4 {
-    // fn write_fdr(&self, path: &std::path::Path) -> std::io::Result<()> {
-    //     let mut file = std::fs::File::create(path)?;
-    //     writeln!(file, "A")?;
-    //     writeln!(file, "4")?;
-    //     for field in &self.fields {
-    //         writeln!(file, "{}", self.serialize_field(&**field))?;
-    //     }
-    //     Ok(())
-    // }
-
-    fn write_fdr(&self, mut writer: Writer, data: &DataFrame) -> std::io::Result<()> {
-        writeln!(writer, "A")?;
-        writeln!(writer, "4")?;
-        for field in &self.fields {
-            writeln!(writer, "{}", self.serialize_field(&**field))?;
-        }
-        let mut data = data.clone().lazy()
-            .select(vec![
-                col("Timestamp").dt().strftime("%H:%M:%S").alias("time"),
-                col("Longitude"),
-                col("Latitude"),
-                col("AltB"),
-                col("HDG"),
-                col("Pitch"),
-                col("Roll")])
-            .drop_nans(None)
-            .collect().unwrap();
-
-        CsvWriter::new(writer)
-            .include_header(false)
-            .finish(&mut data).unwrap();
-            
-        Ok(())
-    }
-
-    fn print_fdr(&self) {
-        println!("A");
-        println!("4");
-        for field in &self.fields {
-            println!("{}", self.serialize_field(&**field));
-        }
-    }
-}
-
-pub struct CommentField {
-    pub comment: String,
-}
-
-impl FDRField for CommentField {
-    fn field_name(&self) -> &str {
-        "COMM"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.comment.clone()]
-    }
-}
-
-pub struct AircraftField {
-    pub aircraft: String,
-}
-
-impl FDRField for AircraftField {
-    fn field_name(&self) -> &str {
-        "ACFT"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.aircraft.clone()]
-    }
-}
-
-pub struct TailNumberField {
-    pub tail_number: String,
-}
-
-impl FDRField for TailNumberField {
-    fn field_name(&self) -> &str {
-        "TAIL"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.tail_number.clone()]
-    }
-}
-
-pub struct FlightTimeField {
-    pub time: String,
-}
-
-impl FDRField for FlightTimeField {
-    fn field_name(&self) -> &str {
-        "TIME"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.time.clone()]
-    }
-}
-
-pub struct FlightDateField {
-    pub date: String,
-}
-
-impl FDRField for FlightDateField {
-    fn field_name(&self) -> &str {
-        "DATE"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.date.clone()]
-    }
-}
-
-pub struct SeaLevelPressureField {
-    pub pressure: f64,
-}
-
-impl FDRField for SeaLevelPressureField {
-    fn field_name(&self) -> &str {
-        "PRES"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.pressure.to_string()]
-    }
-}
-
-pub struct SeaLevelTemperatureField {
-    pub temperature: f64,
-}
-
-impl FDRField for SeaLevelTemperatureField {
-    fn field_name(&self) -> &str {
-        "TEMP"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.temperature.to_string()]
-    }
-}
-
-pub struct WindField {
-    pub direction: i32,
-    pub speed: i32,
-}
-
-impl FDRField for WindField {
-    fn field_name(&self) -> &str {
-        "WIND"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.direction.to_string(), self.speed.to_string()]
-    }
-}
-
-pub struct CalibrationField {
-    pub longitude: f64,
-    pub latitude: f64,
-    pub elevation: i32,
-}
-
-impl FDRField for CalibrationField {
-    fn field_name(&self) -> &str {
-        "CALI"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![
-            self.longitude.to_string(),
-            self.latitude.to_string(),
-            self.elevation.to_string(),
-        ]
-    }
-}
-
-pub struct WarningField {
-    pub time: i32,
-    pub sound: String,
-}
-
-impl FDRField for WarningField {
-    fn field_name(&self) -> &str {
-        "WARN"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.time.to_string(), self.sound.clone()]
-    }
-}
-
-pub struct TextField {
-    pub time: i32,
-    pub text: String,
-}
-
-impl FDRField for TextField {
-    fn field_name(&self) -> &str {
-        "TEXT"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.time.to_string(), self.text.clone()]
-    }
-}
-
-pub struct MarkerField {
-    pub time: i32,
-    pub text: String,
-}
-
-impl FDRField for MarkerField {
-    fn field_name(&self) -> &str {
-        "MARK"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.time.to_string(), self.text.clone()]
-    }
-}
-
-pub struct EventField {
-    pub time: f64,
-}
-
-impl FDRField for EventField {
-    fn field_name(&self) -> &str {
-        "EVNT"
-    }
-
-    fn field_values(&self) -> Vec<String> {
-        vec![self.time.to_string()]
-    }
-}
-
-// create an alias for Box<dyn Write>
-type Writer = Box<dyn Write>;
 
 fn console_writer() -> Writer {
     Box::new(std::io::stdout())
 }
 
-fn file_writer(path: &std::path::Path) -> io::Result<Writer> {
+fn file_writer(path: &std::path::Path) -> std::io::Result<Writer> {
     File::create(path).map(|f| Box::new(f) as Writer)
 }
 
 fn main() {
     let path = std::env::args().nth(1).expect("No file path provided");
     let output = std::env::args().nth(2);
-
     let data = garmin::EISData::from_csv(&std::path::Path::new(path.as_str())).unwrap();
-    println!("{:?}", data.data);
 
     let first_timestamp = data.first_time().unwrap().to_utc();
     let first_time = first_timestamp.format("%H:%M:%S").to_string();
@@ -344,6 +81,7 @@ fn main() {
     let tail_number = data.header.metadata["tail_number"].clone();
 
     let fdr = FDRFileVersion4 {
+        data: data.data,
         fields: vec![
             Box::new(CommentField {
                 comment: format!(
@@ -380,5 +118,5 @@ fn main() {
         None => console_writer(),
     };
 
-    fdr.write_fdr(writer, &data.data).unwrap();
+    fdr.write_fdr(writer).unwrap();
 }
