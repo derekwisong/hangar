@@ -7,7 +7,7 @@ const SAMPLE_CSV: &str = "log_231104_084813_KPOU.csv";
 #[test]
 fn test_read_csv_metadata() -> Result<(), String> {
     let path = resource_path(SAMPLE_CSV);
-    let header = garmin::EISHeader::from_csv(&path).map_err(|e| e.to_string())?;
+    let header = garmin::GarminEISLogHeader::from_csv(&path).map_err(|e| e.to_string())?;
 
     assert_eq!(header.metadata["log_version"], "1.03");
     assert_eq!(header.metadata["airframe_name"], "Mooney M20J");
@@ -19,7 +19,7 @@ fn test_read_csv_metadata() -> Result<(), String> {
 #[test]
 fn read_csv_raw_column_names() -> Result<(), String> {
     let path = resource_path(SAMPLE_CSV);
-    let header = garmin::EISHeader::from_csv(&path).map_err(|e| e.to_string())?;
+    let header = garmin::GarminEISLogHeader::from_csv(&path).map_err(|e| e.to_string())?;
     let raw_columns = header.columns.iter().map(|c| c.raw_name()).collect::<Vec<&str>>();
     assert_eq!(
         raw_columns,
@@ -105,7 +105,7 @@ fn read_csv_raw_column_names() -> Result<(), String> {
 #[test]
 fn read_csv_column_names() -> Result<(), String> {
     let path = resource_path("log_231104_084813_KPOU.csv");
-    let header = garmin::EISHeader::from_csv(&path).map_err(|e| e.to_string())?;
+    let header = garmin::GarminEISLogHeader::from_csv(&path).map_err(|e| e.to_string())?;
     let columns = header.columns.iter().map(|c| c.name()).collect::<Vec<&str>>();
     assert_eq!(
         columns,
@@ -190,7 +190,7 @@ fn read_csv_column_names() -> Result<(), String> {
 #[test]
 fn read_eis_data() -> Result<(), String> {
     let path = resource_path(SAMPLE_CSV);
-    let eis = garmin::EISData::from_csv(&path).map_err(|e| e.to_string())?;
+    let eis = garmin::GarminEISLog::from_csv(&path).map_err(|e| e.to_string())?;
     // check that the headers are loaded
     assert_eq!(eis.header.metadata["log_version"], "1.03");
     assert_eq!(eis.header.metadata["airframe_name"], "Mooney M20J");

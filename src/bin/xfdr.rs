@@ -6,78 +6,93 @@
 //! The FDR file format is a simple csv-like text format which is described inside example files in the "Instructions"
 //! directory of the X-Plane installation.
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use hangar::{
-    detect::{detect_source, AvionicsLogSource},
-    fdr::{FDRFileVersion4, FDRWriter},
+    avionics::{detect_source, AvionicsLogSource},
+    fdr::FDRWriter,
 };
 use std::{path::PathBuf, process::ExitCode};
 
-/// Command line arguments for the binary
+/// Export an X-Plane Flight Data Recorder (FDR) file from an avionics log file
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
-struct Args {
-    /// Path to avionics log file
+struct Args {   
+    /// The source of the avionics log file, otherwise auto-detect source
+    #[arg(short, long, value_enum)]
+    source: Option<AviationLogSourceOption>,
+    
+    /// The path to an aircraft file, relative to the X-Plane root, to use
+    #[arg(short, long, default_value = "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf")]
+    aircraft: Option<String>,
+    
+    /// Path to an avionics log file
     input: PathBuf,
 
-    /// Path to output FDR file
+    /// Path to output FDR file. If not specified, output is written to stdout
     output: Option<PathBuf>,
 }
 
+/// Supported avionics log sources that can be used as command line arguments
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+enum AviationLogSourceOption {
+    /// Flight data logs from Garmin Engine Indication System (EIS) products. One such example is the G500 TXi EIS
+    Garmin,
+    // .. add more sources here as they become known (Avidyne, etc.)
+}
 
-/// Parse an avionics log source into an FDR file format
-fn parse_avionics_log(source: AvionicsLogSource) -> Result<FDRFileVersion4, String> {
-    match source {
-        AvionicsLogSource::Garmin(path) => match hangar::garmin::EISData::from_csv(&path) {
-            Ok(data) => Ok(data.into()),
-            Err(e) => Err(format!("Error reading Garmin data file: {}", e)),
-        },
-        AvionicsLogSource::Unknown => Err("Unable to parse an unknown avionics log file type".to_string()),
+
+impl AviationLogSourceOption {
+    /// Create an AvionicsLogSource using the given args
+    fn to_avionics_log_source(&self, args: &Args) -> AvionicsLogSource {
+        match self {
+            AviationLogSourceOption::Garmin => AvionicsLogSource::Garmin(args.input.clone()),
+            // .. add more sources maps here as they become known
+        }
     }
 }
 
-/// Entrypoint for the xfdr binary.
+/// Entrypoint for the xfdr binary
 fn main() -> ExitCode {
     // parse and validate args
     let args = Args::parse();
 
-    // detect source and parse it into the FDR data structure
-    let fdr = match detect_source(&args.input) {
-        Ok(AvionicsLogSource::Unknown) => {
-            eprintln!("Unable to recognize avionics log source: {}", args.input.display());
-            return ExitCode::FAILURE;
-        }
-        // detected a known source, parse it
-        Ok(p) => match parse_avionics_log(p) {
-            Ok(fdr) => fdr, // return the parsed data
+    // detect the source of the avionics log file
+    let source = match args.source {
+        // if the source was specified, map it to the appropriate source
+        Some(source) => source.to_avionics_log_source(&args),
+        // if the source was not specified, auto-detect it
+        None => match detect_source(&args.input) {
+            // a source was detected
+            Ok(Some(source)) => source,
+            // something unknown was detected
+            Ok(None) => {
+                eprintln!("Unable to recognize avionics log source: {}", args.input.display());
+                return ExitCode::FAILURE;
+            }
+            // input file was not found
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                eprintln!("File not found: {}", args.input.display());
+                return ExitCode::FAILURE;
+            }
+            // error occured while detecting the source
             Err(e) => {
-                eprintln!("Parsing error: {}", e);
+                eprintln!("Detection error: {}", e);
                 return ExitCode::FAILURE;
             }
         },
-        // The input file was not found
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            eprintln!("File not found: {}", args.input.display());
-            return ExitCode::FAILURE;
-        }
-        // An error occured while detecting the source
-        Err(e) => {
-            eprintln!("Detection error: {}", e);
-            return ExitCode::FAILURE;
-        }
     };
 
-    // if an output file is specified, create a writer using it, otherwise use stdout
-    let writer = match hangar::fdr::get_writer(args.output.as_deref()) {
-        Ok(w) => w,
+    // parse the source data
+    let fdr = match source.to_fdr4() {
+        Ok(fdr) => fdr, // return the parsed data
         Err(e) => {
-            eprintln!("Output error: {}", e);
+            eprintln!("Parsing error: {}", e);
             return ExitCode::FAILURE;
         }
     };
 
     // write data and exit
-    return match fdr.write_fdr(writer) {
+    return match fdr.write_fdr(&args.output) {
         Ok(_) => ExitCode::SUCCESS,
         // ignore broken pipe erorrs on stdout (as when on linux when piping output to head)
         Err(ref e) if args.output.is_none() && e.kind() == std::io::ErrorKind::BrokenPipe => ExitCode::SUCCESS,

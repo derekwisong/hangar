@@ -4,13 +4,47 @@ use polars::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
 
+use crate::fdr::{FDRField, FDRFileVersion4, AircraftField, TailNumberField, FlightTimeField, FlightDateField};
+
+impl From<GarminEISLog> for FDRFileVersion4 {
+    /// Convert a Garmin avionics log file into the X-Plane FDR v4 format
+    fn from(data: GarminEISLog) -> Self {
+        let mut fields: Vec<Box<dyn FDRField>> = vec![
+            Box::new(AircraftField {
+                aircraft: "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf".to_string(),
+            }),
+            Box::new(TailNumberField {
+                tail_number: data
+                    .header
+                    .metadata
+                    .get("tail_number")
+                    .map_or("N12345".to_string(), |v| v.clone()),
+            }),
+        ];
+
+        // If there is a time point in the data, add the time fields to the FDR
+        if let Some(first_time) = data.first_time() {
+            let first_timestamp = first_time.to_utc();
+            let first_time = first_timestamp.format("%H:%M:%S").to_string();
+            let first_date = first_timestamp.format("%m/%d/%Y").to_string();
+            fields.push(Box::new(FlightTimeField { time: first_time }));
+            fields.push(Box::new(FlightDateField { date: first_date }));
+        }
+
+        FDRFileVersion4::new(
+            data.data,
+            Some(fields),
+        )
+    }
+}
+
 #[derive(Debug)]
-pub struct EISColumn {
+pub struct GarminEISColumn {
     name: String,
     unit: String,
 }
 
-impl EISColumn {
+impl GarminEISColumn {
     pub fn name(&self) -> &str {
         clean_column_name(&self.name)
     }
@@ -25,17 +59,17 @@ impl EISColumn {
 }
 
 #[derive(Debug)]
-pub struct EISHeader {
+pub struct GarminEISLogHeader {
     pub metadata: HashMap<String, String>,
-    pub columns: Vec<EISColumn>,
+    pub columns: Vec<GarminEISColumn>,
 }
 
-pub struct EISData {
-    pub header: EISHeader,
+pub struct GarminEISLog {
+    pub header: GarminEISLogHeader,
     pub data: DataFrame,
 }
 
-impl EISHeader {
+impl GarminEISLogHeader {
     pub fn from_csv(path: &std::path::Path) -> Result<Self, std::io::Error> {
         let file = std::fs::File::open(path)?;
         let mut metadata = HashMap::new();
@@ -65,7 +99,7 @@ impl EISHeader {
         }
 
         for (unit, name) in units.zip(names) {
-            columns.push(EISColumn {
+            columns.push(GarminEISColumn {
                 name: name.to_string(),
                 unit: unit.trim().to_string(),
             });
@@ -124,7 +158,7 @@ impl EISHeader {
     }
 }
 
-impl EISData {
+impl GarminEISLog {
     fn read_bytes(path: &std::path::Path) -> std::io::Result<std::io::Cursor<Vec<u8>>> {
         let mut file = std::fs::File::open(path)?;
         let mut buffer = Vec::new();
@@ -149,7 +183,7 @@ impl EISData {
     }
 
     pub fn from_csv(path: &std::path::Path) -> PolarsResult<Self> {
-        let header = EISHeader::from_csv(path)?;
+        let header = GarminEISLogHeader::from_csv(path)?;
         let schema = header.build_schema();
         let data = Self::read_df(path, &schema)?;
         let data = parse_datetime(data, "Lcl Date", "Lcl Time", "UTCOfst", "Timestamp", true)?;

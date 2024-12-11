@@ -1,7 +1,9 @@
 // Build X-Plane flight data recorder (FDR) file from a Garmin EIS data file.
+use hangar::fdr::{
+    AircraftField, CommentField, FDRFileVersion4, FDRWriter, FlightDateField, FlightTimeField, TailNumberField,
+};
 use hangar::garmin;
-use hangar::fdr::{CommentField, AircraftField, TailNumberField, FlightTimeField, FlightDateField, Writer, FDRFileVersion4, FDRWriter};
-use std::fs::File;
+use std::path::PathBuf;
 
 // A .fdr file is a text files that contains lines of data in a csv-like format with a few header lines:
 // - The first describes the line-ending types "A" (Apple) or "I" (IBM) and then the appropriate line ending.
@@ -59,21 +61,10 @@ use std::fs::File;
 // DREF, sim/cockpit2/radios/actuators/com1_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 // DREF, sim/cockpit2/radios/actuators/com2_frequency_hz				100.0		// comment: constant to do the whole mhz-khz-hz-decimal thing
 
-
-
-
-fn console_writer() -> Writer {
-    Box::new(std::io::stdout())
-}
-
-fn file_writer(path: &std::path::Path) -> std::io::Result<Writer> {
-    File::create(path).map(|f| Box::new(f) as Writer)
-}
-
 fn main() {
     let path = std::env::args().nth(1).expect("No file path provided");
     let output = std::env::args().nth(2);
-    let data = garmin::EISData::from_csv(&std::path::Path::new(path.as_str())).unwrap();
+    let data = garmin::GarminEISLog::from_csv(&std::path::Path::new(path.as_str())).unwrap();
 
     let first_timestamp = data.first_time().unwrap().to_utc();
     let first_time = first_timestamp.format("%H:%M:%S").to_string();
@@ -113,10 +104,5 @@ fn main() {
         ],
     };
 
-    let writer = match output {
-        Some(output) => file_writer(&std::path::Path::new(output.as_str())).unwrap(),
-        None => console_writer(),
-    };
-
-    fdr.write_fdr(writer).unwrap();
+    fdr.write_fdr(&output.map(|p| PathBuf::from(p))).unwrap();
 }
