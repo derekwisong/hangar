@@ -6,24 +6,49 @@ use std::io::{BufRead, Read};
 
 use crate::fdr::{AircraftField, FDRField, FDRFileVersion4, FlightDateField, FlightTimeField, TailNumberField};
 
-impl From<GarminEISLog> for FDRFileVersion4 {
-    /// Convert a Garmin avionics log file into the X-Plane FDR v4 format
-    fn from(data: GarminEISLog) -> Self {
+#[derive(Default)]
+pub struct GarminToFDRBuilder {
+    aircraft: String,
+    tail_number_default: String,
+    tail_number_override: Option<String>,
+}
+
+impl GarminToFDRBuilder {
+    pub fn new(
+        aircraft: String,
+        tail_number_default: String,
+    ) -> Self {
+        Self {
+            aircraft,
+            tail_number_default,
+            tail_number_override: None,
+        }
+    }
+
+    pub fn with_tail_number_override(mut self, tail_number: String) -> Self {
+        self.tail_number_override = Some(tail_number);
+        self
+    }
+
+    pub fn build(self, log: GarminEISLog) -> FDRFileVersion4 {
         let mut fields: Vec<Box<dyn FDRField>> = vec![
             Box::new(AircraftField {
-                aircraft: "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf".to_string(),
+                aircraft: self.aircraft,
             }),
             Box::new(TailNumberField {
-                tail_number: data
-                    .header
-                    .metadata
-                    .get("tail_number")
-                    .map_or("N12345".to_string(), |v| v.clone()),
+                tail_number: match self.tail_number_override {
+                    Some(tail_number) => tail_number,
+                    None => log
+                        .header
+                        .metadata
+                        .get("tail_number")
+                        .map_or(self.tail_number_default, |v| v.clone()),
+                },
             }),
         ];
 
         // If there is a time point in the data, add the time fields to the FDR
-        if let Some(first_time) = data.first_time() {
+        if let Some(first_time) = log.first_time() {
             let first_timestamp = first_time.to_utc();
             let first_time = first_timestamp.format("%H:%M:%S").to_string();
             let first_date = first_timestamp.format("%m/%d/%Y").to_string();
@@ -31,7 +56,7 @@ impl From<GarminEISLog> for FDRFileVersion4 {
             fields.push(Box::new(FlightDateField { date: first_date }));
         }
 
-        FDRFileVersion4::new(data.data, Some(fields))
+        FDRFileVersion4::new(log.data, Some(fields))
     }
 }
 

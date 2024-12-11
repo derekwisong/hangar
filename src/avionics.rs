@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::fdr::FDRFileVersion4;
-use crate::garmin::{GarminEISLog, GarminEISLogHeader};
+use crate::garmin::{GarminEISLog, GarminEISLogHeader, GarminToFDRBuilder};
 
 /// The source of an avionics log
 pub enum AvionicsLogSource {
@@ -13,10 +13,20 @@ pub enum AvionicsLogSource {
 }
 
 impl AvionicsLogSource {
-    pub fn to_fdr4(&self) -> Result<FDRFileVersion4, String> {
+    pub fn to_fdr4(&self, aircraft: String, tail_number_override: Option<String>) -> Result<FDRFileVersion4, String> {
+        const DEFAULT_TAIL_NUMBER: &str = "N12345";
+
         match self {
             AvionicsLogSource::Garmin(path) => match GarminEISLog::from_csv(&path) {
-                Ok(data) => Ok(data.into()),
+                Ok(data) => {
+                    let mut builder = GarminToFDRBuilder::new(aircraft, DEFAULT_TAIL_NUMBER.to_string());
+
+                    if let Some(tail_number) = tail_number_override {
+                        builder = builder.with_tail_number_override(tail_number);
+                    }
+
+                    Ok(builder.build(data))
+                },
                 Err(e) => Err(format!("Error reading Garmin data file: {}", e)),
             },
         }

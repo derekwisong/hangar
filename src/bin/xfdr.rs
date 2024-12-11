@@ -23,7 +23,10 @@ struct Args {
 
     /// The path to an aircraft file, relative to the X-Plane root, to use
     #[arg(short, long, default_value = "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf")]
-    aircraft: Option<String>,
+    aircraft: String,
+
+    /// Optionally override any tail number discovered in the avionics log
+    tail_number: Option<String>,
 
     /// Path to an avionics log file
     input: PathBuf,
@@ -44,7 +47,7 @@ impl AviationLogSourceOption {
     /// Create an AvionicsLogSource using the given args
     fn to_avionics_log_source(&self, args: &Args) -> AvionicsLogSource {
         match self {
-            AviationLogSourceOption::Garmin => AvionicsLogSource::Garmin(args.input.clone()),
+            Self::Garmin => AvionicsLogSource::Garmin(args.input.clone()),
             // .. add more sources maps here as they become known
         }
     }
@@ -82,7 +85,7 @@ fn main() -> ExitCode {
     };
 
     // parse the source data
-    let fdr = match source.to_fdr4() {
+    let fdr = match source.to_fdr4(args.aircraft, args.tail_number) {
         Ok(fdr) => fdr, // return the parsed data
         Err(e) => {
             eprintln!("Parsing error: {}", e);
