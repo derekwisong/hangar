@@ -8,6 +8,5 @@ pub fn read_csv_eager(c: &mut Criterion) {
     c.bench_function("read_csv", |b| b.iter(|| garmin::GarminEISLog::from_csv(&p).unwrap()));
 }
 
-
 criterion_group!(benches, read_csv_eager);
 criterion_main!(benches);

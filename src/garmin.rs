@@ -4,7 +4,7 @@ use polars::prelude::*;
 use std::collections::HashMap;
 use std::io::{BufRead, Read};
 
-use crate::fdr::{FDRField, FDRFileVersion4, AircraftField, TailNumberField, FlightTimeField, FlightDateField};
+use crate::fdr::{AircraftField, FDRField, FDRFileVersion4, FlightDateField, FlightTimeField, TailNumberField};
 
 impl From<GarminEISLog> for FDRFileVersion4 {
     /// Convert a Garmin avionics log file into the X-Plane FDR v4 format
@@ -31,10 +31,7 @@ impl From<GarminEISLog> for FDRFileVersion4 {
             fields.push(Box::new(FlightDateField { date: first_date }));
         }
 
-        FDRFileVersion4::new(
-            data.data,
-            Some(fields),
-        )
+        FDRFileVersion4::new(data.data, Some(fields))
     }
 }
 
@@ -194,10 +191,17 @@ impl GarminEISLog {
 
     pub fn first_time(&self) -> Option<chrono::DateTime<Utc>> {
         match self.data.column("Timestamp") {
-            Ok(Column::Series(s)) => Some(s.datetime().unwrap().as_datetime_iter().next().unwrap().unwrap().and_utc()),
+            Ok(Column::Series(s)) => Some(
+                s.datetime()
+                    .unwrap()
+                    .as_datetime_iter()
+                    .next()
+                    .unwrap()
+                    .unwrap()
+                    .and_utc(),
+            ),
             _ => None,
         }
-        
     }
 }
 
@@ -209,34 +213,33 @@ fn parse_datetime(
     new_timestamp_col: &str,
     drop_source_cols: bool,
 ) -> PolarsResult<LazyFrame> {
-    let mut lazy = lazy
-        .with_column(
-            concat_str(
-                vec![
-                    col(date_col).dt().strftime("%Y-%m-%d"),
-                    lit("T"),
-                    col(time_col),
-                    col(offset_col),
-                ],
-                "",
-                false,
-            )
-            .str()
-            .to_datetime(
-                Some(TimeUnit::Microseconds),
-                Some("UTC".into()),
-                StrptimeOptions {
-                    format: Some("%Y-%m-%dT%H:%M:%S%z".into()),
-                    ..Default::default()
-                },
-                lit("raise"),
-            )
-            .alias(new_timestamp_col),
-        );
-    
+    let mut lazy = lazy.with_column(
+        concat_str(
+            vec![
+                col(date_col).dt().strftime("%Y-%m-%d"),
+                lit("T"),
+                col(time_col),
+                col(offset_col),
+            ],
+            "",
+            false,
+        )
+        .str()
+        .to_datetime(
+            Some(TimeUnit::Microseconds),
+            Some("UTC".into()),
+            StrptimeOptions {
+                format: Some("%Y-%m-%dT%H:%M:%S%z".into()),
+                ..Default::default()
+            },
+            lit("raise"),
+        )
+        .alias(new_timestamp_col),
+    );
+
     if drop_source_cols {
         lazy = lazy.drop(vec![date_col, time_col, offset_col]);
     }
-   
+
     Ok(lazy)
 }

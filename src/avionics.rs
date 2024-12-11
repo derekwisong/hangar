@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use crate::fdr::FDRFileVersion4;
-use crate::garmin::{GarminEISLogHeader, GarminEISLog};
+use crate::garmin::{GarminEISLog, GarminEISLogHeader};
 
 /// The source of an avionics log
 pub enum AvionicsLogSource {
@@ -23,7 +23,6 @@ impl AvionicsLogSource {
     }
 }
 
-
 /// Detect the source of an avionics log file. If the source is not recognized, returns None.
 pub fn detect_source(path: &Path) -> Result<Option<AvionicsLogSource>, std::io::Error> {
     // Currently, only Garmin files are supported.
@@ -35,7 +34,7 @@ pub fn detect_source(path: &Path) -> Result<Option<AvionicsLogSource>, std::io::
                 ErrorKind::NotFound,
                 ErrorKind::PermissionDenied,
                 ErrorKind::IsADirectory,
-                ErrorKind::NotSeekable
+                ErrorKind::NotSeekable,
             ]
             .contains(&e.kind()) =>
         {
@@ -43,8 +42,11 @@ pub fn detect_source(path: &Path) -> Result<Option<AvionicsLogSource>, std::io::
         }
         // other remaining errors indicate the format of the file was not recognized
         Err(e) => {
-            eprintln!("DEBUG: Error '{:?}' is being disregarded as the format being unrecognized.", e);
+            eprintln!(
+                "DEBUG: Error '{:?}' is being disregarded as the format being unrecognized.",
+                e
+            );
             Ok(None)
-        }, // the format is not recognized
+        } // the format is not recognized
     }
 }

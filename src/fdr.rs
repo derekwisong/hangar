@@ -332,15 +332,7 @@ impl FDRWriter for FDRFileVersion4 {
             writeln!(writer, "{}", self.serialize_field(&**field))?;
         }
 
-        const REQUIRED_COLS: [&str; 7] = [
-            "Timestamp",
-            "Longitude",
-            "Latitude",
-            "AltB",
-            "HDG",
-            "Pitch",
-            "Roll",
-        ];
+        const REQUIRED_COLS: [&str; 7] = ["Timestamp", "Longitude", "Latitude", "AltB", "HDG", "Pitch", "Roll"];
 
         let mut df = self
             .data
@@ -363,10 +355,7 @@ impl FDRWriter for FDRFileVersion4 {
                 error.kind(),
                 msg.map_or_else(|| error.to_string(), |m| m.to_string()),
             )),
-            Err(e) => Err(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                e.to_string(),
-            )),
+            Err(e) => Err(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())),
         }
     }
 }

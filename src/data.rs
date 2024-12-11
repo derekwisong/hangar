@@ -44,7 +44,7 @@ fn clean_strings(mut df: DataFrame) -> PolarsResult<DataFrame> {
         df.replace(
             &col,
             Series::new(
-                col.clone().into(),  // this was once fine using &col, but update of polars broke it
+                col.clone().into(), // this was once fine using &col, but update of polars broke it
                 df.column(&col)?
                     .str()?
                     .into_iter()
