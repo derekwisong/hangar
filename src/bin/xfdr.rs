@@ -26,6 +26,7 @@ struct Args {
     aircraft: String,
 
     /// Optionally override any tail number discovered in the avionics log
+    #[arg(short, long)]
     tail_number: Option<String>,
 
     /// Path to an avionics log file
