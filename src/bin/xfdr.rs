@@ -21,18 +21,18 @@ struct Args {
     #[arg(short, long, value_enum)]
     source: Option<AviationLogSourceOption>,
 
-    /// The path to an aircraft file, relative to the X-Plane root, to use
+    /// The path to an aircraft file, relative to the X-Plane root, to be used as the aircraft model during replay
     #[arg(short, long, default_value = "Aircraft/Laminar Research/Cirrus SR22/Cirrus SR22.acf")]
     aircraft: String,
 
-    /// Optionally override any tail number discovered in the avionics log
+    /// Optionally override the aircraft tail number, if any, that was discovered in the avionics log
     #[arg(short, long)]
     tail_number: Option<String>,
 
     /// Path to an avionics log file
     input: PathBuf,
 
-    /// Path to output FDR file. If not specified, output is written to stdout
+    /// Path to output a FDR file. If not specified, output is written to stdout
     output: Option<PathBuf>,
 }
 
