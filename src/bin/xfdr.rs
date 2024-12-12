@@ -1,8 +1,5 @@
 //! Export an X-Plane Flight Data Recorder (FDR) file from an avionics log file.
 //!
-//! FDR files may be replayed in X-Plane to visualize flight path and telemetry data. This is useful as a post-flight
-//! debriefing and analysis tool, for creating videos, or for sharing flight data with others.
-//!
 //! The FDR file format is a simple csv-like text format which is described inside example files in the "Instructions"
 //! directory of the X-Plane installation.
 
@@ -13,9 +10,12 @@ use hangar::{
 };
 use std::{path::PathBuf, process::ExitCode};
 
-/// Export an X-Plane Flight Data Recorder (FDR) file from an avionics log file
+/// Export an X-Plane Flight Data Recorder (FDR) file from an avionics log file.
+/// 
+/// FDR files may be replayed in X-Plane to visualize flight path and telemetry data. This is useful as a post-flight
+/// debriefing and analysis tool, for creating videos, or for sharing flight data with others.
 #[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about)]
 struct Args {
     /// The source of the avionics log file, otherwise auto-detect source
     #[arg(short, long, value_enum)]
